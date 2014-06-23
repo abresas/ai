@@ -114,25 +114,30 @@ updateWeightsNN n outputs deltas learning_rate =
     in o
     -- in trace (show (outputs, deltas)) $ o
 
+weightSigma :: [Double] -> Neuron -> Double
+weightSigma xs n = sum $ zipWith (*) xs (weights n)
+
+weightSigmaLayer :: [Double] -> NeuralLayer -> [Double]
+weightSigmaLayer = zipWith weightSigma . repeat
+
 backProp :: [NeuralLayer] -> [Double] -> [Double] -> Double -> NeuralNetwork
 backProp n input target learning_rate = 
     let outputs = layersOutput input n
         result = head outputs
         outputLayer = last n
         outputError = zipWith (-) target result
-        delta = zipWith3 backwardActivate outputLayer (repeat (head (tail outputs))) outputError 
-        hiddenLayers = tail (reverse n)
+        hiddenOutputs = (tail outputs)
+        inputToOutputLayer = (repeat (head hiddenOutputs))
+        delta = zipWith3 backwardActivate outputLayer inputToOutputLayer outputError 
+        hiddenLayers = init n
         (deltas,out,_) = foldl (\acc l -> 
             let (deltas,outs, prevLayer) = acc
-                weightSigma = (\n xs -> sum $ map (* xs) (weights n))
-                weightSigmaLayer = (\l delta -> zipWith weightSigma l delta)
                 (output:restOutputs) = outs
                 prevDelta = head deltas
-                delta = zipWith3 backwardActivate l (repeat output) (cycle (weightSigmaLayer prevLayer prevDelta))
+                delta = zipWith3 backwardActivate l (repeat output) (cycle (weightSigmaLayer prevDelta prevLayer))
                 deltas' = delta:deltas
                 outputs' = restOutputs
-            in (deltas',outputs', l) ) ([delta],(tail (tail outputs)), outputLayer) hiddenLayers
-    -- in trace (show deltas) $ updateWeightsNN n deltas (reverse outputs) learning_rate
+            in (deltas',outputs', l) ) ([delta],(tail hiddenOutputs), outputLayer) (reverse hiddenLayers)
     in updateWeightsNN n (reverse outputs) deltas learning_rate
 
 average :: (Real a, Fractional b) => [a] -> b
@@ -162,8 +167,8 @@ trainCosLoop n timesTrained lastRmse = do
     r <- randomIO :: IO Double
     let input = r * pi / 2
     let target = [cos input]
-    let n' = backProp n [input] target 0.1
-    let e = validateCosLoop gen n ((timesTrained + 1) * 3) [] []
+    let n' = backProp n [input] target 1.5
+    let e = validateCosLoop gen n 1000 [] []
     putStrLn $ "Root mean square error: " ++ (show e) ++ " (" ++ (show timesTrained) ++ ")"
     trainCosLoop n' (timesTrained + 1) e
 
@@ -178,8 +183,8 @@ validateCosLoop gen n times outputs targets =
         output = runNN n [input]
         targets' = (target:targets)
         outputs' = (output:outputs)
-    --in validateCosLoop gen' n (times-1) outputs' targets'
-    in trace (show (target,output)) $ validateCosLoop gen' n (times-1) outputs' targets'
+    in validateCosLoop gen' n (times-1) outputs' targets'
+    --in trace (show (target,output)) $ validateCosLoop gen' n (times-1) outputs' targets'
 
 guessGame = do 
     hSetBuffering stdin LineBuffering
