@@ -38,6 +38,12 @@ createSigmoidNeuron w = Neuron w sigmoid sigmoidDerivative
 createLinearNeuron :: [Double] -> Neuron
 createLinearNeuron w = Neuron w id (\x -> 1)
 
+createSigmoidLayer :: [[Double]] -> NeuralLayer
+createSigmoidLayer = map createSigmoidNeuron
+
+createLinearLayer :: [[Double]] -> NeuralLayer
+createLinearLayer = map createLinearNeuron
+
 initNeuronWeights :: Int -> Seed -> ([Double], Seed)
 initNeuronWeights numWeights seed =
     let (r, seed') = finiteRandoms numWeights seed
@@ -65,12 +71,6 @@ backwardActivate n i weightedDelta =
         last_in = sum $ zipWith (*) i w
     in (g' last_in) * weightedDelta
 
-createSigmoidLayer :: [[Double]] -> NeuralLayer
-createSigmoidLayer = map createSigmoidNeuron
-
-createLinearLayer :: [[Double]] -> NeuralLayer
-createLinearLayer = map createLinearNeuron
-
 createNN3 :: Seed -> Int -> Int -> Int -> NeuralNetwork
 createNN3 gen numInput numHidden numOutput = 
     let (hiddenWeights, gen') = initLayerWeights numHidden numInput gen
@@ -87,58 +87,67 @@ runNNLayers = foldl runNNLayer
 
 -- Calculate list of output per layer
 layersOutput :: [Double] -> [NeuralLayer] -> [[Double]]
-layersOutput input n = let o =foldl (\outputs l -> ((runNNLayer (head outputs) l):outputs)) [input] n
-    --in trace (show (o,input,n)) $ o
-    in o
+layersOutput input n = foldl (\outputs l -> ((runNNLayer (head outputs) l):outputs)) [input] n
 
 runNNLayer :: [Double] -> NeuralLayer -> [Double]
 runNNLayer = zipWith activate . repeat
 
-updateWeights :: Double -> Double -> [Double] -> Neuron -> Neuron
-updateWeights learning_rate delta inputs n = 
+updateWeights :: Double -> Neuron -> Double -> [Double] -> Neuron
+updateWeights learning_rate n delta inputs = 
     let func = function n
         der = derivative n
         w = weights n
         updatedWeights = zipWith (\weight input -> weight + learning_rate * input * delta) w inputs
-    --in trace ("upd" ++ (show (delta,inputs))) $  Neuron updatedWeights func der
     in Neuron updatedWeights func der
 
-updateWeightsLayer :: Double -> NeuralLayer -> [[Double]] -> [Double] -> NeuralLayer
-updateWeightsLayer learning_rate layer input delta = let o = zipWith3 (updateWeights learning_rate) delta input layer
-    -- in trace ( "updL" ++ (show (layer,delta)) ) $ o
-    in o
+updateWeightsLayer :: Double -> NeuralLayer -> [Double] -> [[Double]] -> NeuralLayer
+updateWeightsLayer = zipWith3 . updateWeights
 
-updateWeightsNN :: NeuralNetwork -> [[Double]] -> [[Double]] -> Double -> NeuralNetwork
-updateWeightsNN n outputs deltas learning_rate =
-    let o = zipWith3 (updateWeightsLayer learning_rate) n (map repeat outputs) deltas
-    in o
-    -- in trace (show (outputs, deltas)) $ o
+updateWeightsNN :: Double -> NeuralNetwork -> [[Double]] -> [[[Double]]] -> NeuralNetwork
+updateWeightsNN = zipWith3 . updateWeightsLayer
 
-weightSigma :: [Double] -> Neuron -> Double
-weightSigma xs n = sum $ zipWith (*) xs (weights n)
+sumProduct :: [Double] -> [Double] -> Double
+sumProduct = (sum .) . zipWith (*)
 
 weightSigmaLayer :: [Double] -> NeuralLayer -> [Double]
-weightSigmaLayer = zipWith weightSigma . repeat
+weightSigmaLayer delta layer = let
+    -- clean this up, transpose?
+    numWeights = length (weights (layer !! 0))
+    w = map (\(l,i) -> map (\n -> (weights n) !! i) l) $ zip (replicate numWeights layer) [0..]
+    in zipWith sumProduct w (replicate numWeights delta)
+
+layerDelta :: NeuralLayer -> [[Double]] -> [Double] -> [Double]
+layerDelta = zipWith3 backwardActivate
+
+outputsToInputs :: [[Double]] -> [[[Double]]]
+outputsToInputs = init . (map repeat)
 
 backProp :: [NeuralLayer] -> [Double] -> [Double] -> Double -> NeuralNetwork
 backProp n input target learning_rate = 
+        -- O = outputMatrix
     let outputs = layersOutput input n
+        -- I = inputMatrix
+        inputs = outputsToInputs $ reverse outputs
+        -- Result = output row = head O
         result = head outputs
         outputLayer = last n
         outputError = zipWith (-) target result
-        hiddenOutputs = (tail outputs)
-        inputToOutputLayer = (repeat (head hiddenOutputs))
-        delta = zipWith3 backwardActivate outputLayer inputToOutputLayer outputError 
+        -- For each output node i
+        --    Di = g'( Ii ) * ( Yi - Ai )
+        delta = zipWith3 backwardActivate outputLayer (last inputs) outputError
         hiddenLayers = init n
-        (deltas,out,_) = foldl (\acc l -> 
-            let (deltas,outs, prevLayer) = acc
-                (output:restOutputs) = outs
+        -- For l = L - 1 to 1
+        (deltas,_,_) = foldr (\l acc -> 
+            let (deltas,inputs,prevLayer) = acc
+                (input:inputs') = inputs
                 prevDelta = head deltas
-                delta = zipWith3 backwardActivate l (repeat output) (cycle (weightSigmaLayer prevDelta prevLayer))
+                -- For each node j in layer l
+                --     Dj = g'(Ij) * Σi (Di * Wji)
+                delta = zipWith3 backwardActivate l input (weightSigmaLayer prevDelta prevLayer)
                 deltas' = delta:deltas
-                outputs' = restOutputs
-            in (deltas',outputs', l) ) ([delta],(tail hiddenOutputs), outputLayer) (reverse hiddenLayers)
-    in updateWeightsNN n (reverse outputs) deltas learning_rate
+            in (deltas',inputs',l) ) ([delta],(reverse inputs),outputLayer) hiddenLayers
+        -- Wji = Wji + alpha * Ii * Di
+    in updateWeightsNN learning_rate n deltas inputs 
 
 average :: (Real a, Fractional b) => [a] -> b
 average xs = realToFrac (sum xs) / genericLength xs
@@ -160,17 +169,22 @@ rmse targets outputs = sqrt $ average $ zipWith squareError targets outputs
 trainCos = do
     gen <- getStdGen
     let n = createNN3 gen 1 10 1
-    trainCosLoop n 0 1
+    trainedN <- trainCosLoop n 10000 0 1
+    return trainedN
 
-trainCosLoop n timesTrained lastRmse = do
-    gen <- newStdGen
-    r <- randomIO :: IO Double
-    let input = r * pi / 2
-    let target = [cos input]
-    let n' = backProp n [input] target 1.5
-    let e = validateCosLoop gen n 1000 [] []
-    putStrLn $ "Root mean square error: " ++ (show e) ++ " (" ++ (show timesTrained) ++ ")"
-    trainCosLoop n' (timesTrained + 1) e
+trainCosLoop :: NeuralNetwork -> Int -> Int -> Double -> IO NeuralNetwork
+trainCosLoop n times timesTrained lastRmse = do
+    if ( times == timesTrained )
+        then do return n
+        else do
+            gen <- newStdGen
+            r <- randomIO :: IO Double
+            let input = r * pi / 2
+            let target = [cos input]
+            let n' = backProp n [input] target 1.5
+            let e = validateCosLoop gen n 1000 [] []
+            putStrLn $ "Root mean square error: " ++ (show e) ++ " (" ++ (show timesTrained) ++ ")"
+            trainCosLoop n' times (timesTrained + 1) e
 
 validateCosLoop :: Seed -> NeuralNetwork -> Int -> [[Double]] -> [[Double]] -> Double
 validateCosLoop gen n 0 outputs targets = 
@@ -184,7 +198,6 @@ validateCosLoop gen n times outputs targets =
         targets' = (target:targets)
         outputs' = (output:outputs)
     in validateCosLoop gen' n (times-1) outputs' targets'
-    --in trace (show (target,output)) $ validateCosLoop gen' n (times-1) outputs' targets'
 
 guessGame = do 
     hSetBuffering stdin LineBuffering
