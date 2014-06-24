@@ -157,7 +157,7 @@ runNNLayer = zipWith activate . repeat
 
 -- Like runNN but returns list of output per layer (output matrix).
 layersOutput :: [Double] -> [NeuralLayer] -> [[Double]]
-layersOutput input n = foldl (\outputs l -> ((runNNLayer (head outputs) l):outputs)) [input] n
+layersOutput input n = foldl (\outputs l -> outputs ++ [(runNNLayer (last outputs) l)]) [input] n
 
 ------------------------ NN LEARNING --------------------------------
 
@@ -231,9 +231,9 @@ backProp n input target learning_rate = let
     -- Calculate output per layer
     outputs = layersOutput input n
     -- Transform output per layer into input per layer
-    inputs = outputsToInputs $ reverse outputs
+    inputs = outputsToInputs outputs
     -- Last output is the result
-    result = head outputs
+    result = last outputs
     -- Calculate error of output layer
     outputError = zipWith (-) target result
     -- Calculate delta for each layer
