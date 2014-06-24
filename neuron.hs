@@ -113,7 +113,7 @@ runNNLayers = foldl runNNLayer
 runNNLayer :: [Double] -> NeuralLayer -> [Double]
 runNNLayer = zipWith activate . repeat
 
--- Calculate list of output per layer (output matrix).
+-- Like runNN but returns list of output per layer (output matrix).
 layersOutput :: [Double] -> [NeuralLayer] -> [[Double]]
 layersOutput input n = foldl (\outputs l -> ((runNNLayer (head outputs) l):outputs)) [input] n
 
@@ -140,12 +140,6 @@ updateWeightsNN = zipWith3 . updateWeightsLayer
 sumProduct :: [Double] -> [Double] -> Double
 sumProduct = (sum .) . zipWith (*)
 
--- Generic matrix transpose. Taken from http://stackoverflow.com/questions/2578930/understanding-this-matrix-transposition-function-in-haskell
--- Useful to transpose layer of neurons
---transpose :: [[a]] -> [[a]]
---transpose ([]:_) = []
---transpose x = (map head x) : transpose (map tail x)
-
 weightSigmaLayer :: [Double] -> NeuralLayer -> [Double]
 weightSigmaLayer delta layer = let
     -- using tranpose we get weights grouped by source node
@@ -159,31 +153,49 @@ layerDelta = zipWith3 backwardActivate
 outputsToInputs :: [[Double]] -> [[[Double]]]
 outputsToInputs = init . (map repeat)
 
+layersDelta :: [[[Double]]] -> NeuralLayer -> [[Double]] -> [NeuralLayer] -> [[Double]]
+layersDelta inputMatrix prevLayer acc [] = acc
+layersDelta inputMatrix prevLayer acc layers = let
+    (l:layers') = layers
+    (input:inputMatrix') = inputMatrix
+    prevDelta = head acc
+    delta = zipWith3 backwardActivate l input (weightSigmaLayer prevDelta prevLayer)
+    in layersDelta inputMatrix' l (delta:acc) layers'
+
+-- Backpropagate multi-layer network using a single training sample (input,target) 
+-- learning_rate is the speed of learning, typically in the range [0..1], usually 0.1.
+-- Large learning_rate allows for faster learning, but smaller values will typically result in better learning.
+--
+-- A training function will call this function multiple times
+-- to get a network with improved weights every time.
+--
+-- Example teaching sine function:
+--  n = createNN3 seed 1 10 1
+--  n' = backProp n [0] [0] 0.1
+--  n'' = backProp n' [pi/2] [1] 0.1
+--
+-- Different learning rates may be used during the training of the same network,
+-- for example by passing large values at the beginning and smaller ones later.
+--
+-- TODO: momentum
 backProp :: [NeuralLayer] -> [Double] -> [Double] -> Double -> NeuralNetwork
-backProp n input target learning_rate = 
-        -- O = outputMatrix
-    let outputs = layersOutput input n
-        -- I = inputMatrix
-        inputs = outputsToInputs $ reverse outputs
-        -- Result = output row = head O
-        result = head outputs
-        outputLayer = last n
-        outputError = zipWith (-) target result
-        -- For each output node i
-        --    Di = g'( Ii ) * ( Yi - Ai )
-        delta = zipWith3 backwardActivate outputLayer (last inputs) outputError
-        hiddenLayers = init n
-        -- For l = L - 1 to 1
-        (deltas,_,_) = foldr (\l acc -> 
-            let (deltas,inputs,prevLayer) = acc
-                (input:inputs') = inputs
-                prevDelta = head deltas
-                -- For each node j in layer l
-                --     Dj = g'(Ij) * Σi (Di * Wji)
-                delta = zipWith3 backwardActivate l input (weightSigmaLayer prevDelta prevLayer)
-                deltas' = delta:deltas
-            in (deltas',inputs',l) ) ([delta],(reverse inputs),outputLayer) hiddenLayers
-        -- Wji = Wji + alpha * Ii * Di
+backProp n input target learning_rate = let
+    -- Calculate output per layer
+    outputs = layersOutput input n
+    -- Transform output per layer into input per layer
+    inputs = outputsToInputs $ reverse outputs
+    -- Last output is the result
+    result = head outputs
+    -- Last layer is output layer
+    outputLayer = last n
+    -- Calculate error of output layer
+    outputError = zipWith (-) target result
+    -- Calculate delta of output layer
+    delta = zipWith3 backwardActivate outputLayer (last inputs) outputError
+    -- Calculate delta for rest of layers
+    hiddenLayers = init n
+    deltas = layersDelta (reverse inputs) outputLayer [delta] hiddenLayers
+    -- Use deltas to update weights
     in updateWeightsNN learning_rate n deltas inputs 
 
 average :: (Real a, Fractional b) => [a] -> b
