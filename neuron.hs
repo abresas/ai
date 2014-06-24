@@ -19,44 +19,7 @@ type NeuralNetwork = [NeuralLayer]
 
 type Seed = StdGen
 
-finiteRandoms :: (Random a) => Int -> Seed -> ([a], Seed)  
-finiteRandoms 0 gen = ([], gen)  
-finiteRandoms n gen =   
-    let (value, newGen) = random gen  
-        (restOfList, finalGen) = finiteRandoms (n-1) newGen  
-    in (value:restOfList, finalGen) 
-
-sigmoid :: Double -> Double
-sigmoid x = (exp x)/(1 + exp x)
-
-sigmoidDerivative :: Double -> Double
-sigmoidDerivative x = (exp x)/((exp x + 1)**2)
-
-createSigmoidNeuron :: [Double] -> Neuron
-createSigmoidNeuron w = Neuron w sigmoid sigmoidDerivative
-
-createLinearNeuron :: [Double] -> Neuron
-createLinearNeuron w = Neuron w id (\x -> 1)
-
-createSigmoidLayer :: [[Double]] -> NeuralLayer
-createSigmoidLayer = map createSigmoidNeuron
-
-createLinearLayer :: [[Double]] -> NeuralLayer
-createLinearLayer = map createLinearNeuron
-
-initNeuronWeights :: Int -> Seed -> ([Double], Seed)
-initNeuronWeights numWeights seed =
-    let (r, seed') = finiteRandoms numWeights seed
-        weights = map (\x -> x - 0.5 ) r
-    in (weights, seed')
-
-initLayerWeights :: Int -> Int -> Seed -> ([[Double]], Seed)
-initLayerWeights 0 numWeights seed = ([], seed)
-initLayerWeights numNeurons numWeights seed = 
-    let (firstWeights, seed0) = initNeuronWeights numWeights seed
-        (rest, seed1) = initLayerWeights (numNeurons-1) numWeights seed0
-    in ( (firstWeights:rest), seed1 )
-
+-- Feed-forward activate neuron with given input.
 activate :: [Double] -> Neuron -> Double
 activate i n = 
     let g = function n
@@ -64,6 +27,7 @@ activate i n =
         sigma = sum $ zipWith (*) i w
     in g sigma
 
+-- Feed-backward activate neuron with given input and weighted delta.
 backwardActivate :: Neuron -> [Double] -> Double -> Double
 backwardActivate n i weightedDelta =
     let g' = derivative n
@@ -71,6 +35,64 @@ backwardActivate n i weightedDelta =
         last_in = sum $ zipWith (*) i w
     in (g' last_in) * weightedDelta
 
+-- Logistic function :: R -> [0..1]
+sigmoid :: Double -> Double
+sigmoid x = (exp x)/(1 + exp x)
+
+-- Derivative of logistic function.
+sigmoidDerivative :: Double -> Double
+sigmoidDerivative x = (exp x)/((exp x + 1)**2)
+
+-- Create a neuron with sigmoid activation using given weights.
+createSigmoidNeuron :: [Double] -> Neuron
+createSigmoidNeuron w = Neuron w sigmoid sigmoidDerivative
+
+-- Create a linear neuron with given weights.
+-- May be useful for output layer.
+-- Curently uses identity function as activation.
+createLinearNeuron :: [Double] -> Neuron
+createLinearNeuron w = Neuron w id (\x -> 1)
+
+-- Create a layer of sigmoid neurons.
+createSigmoidLayer :: [[Double]] -> NeuralLayer
+createSigmoidLayer = map createSigmoidNeuron
+
+-- Create a layer of linear neurons.
+-- May be useful as output layer.
+createLinearLayer :: [[Double]] -> NeuralLayer
+createLinearLayer = map createLinearNeuron
+
+-- Generate a list of finite randoms.
+finiteRandoms :: (Random a) => Int -> Seed -> ([a], Seed)  
+finiteRandoms 0 gen = ([], gen)  
+finiteRandoms n gen =   
+    let (value, newGen) = random gen  
+        (restOfList, finalGen) = finiteRandoms (n-1) newGen  
+    in (value:restOfList, finalGen) 
+
+-- Return a specific number of initial weights
+-- The weights are adjusted to be a random number between -0.5 and 0.5
+-- These are considered "acceptable" weights, but
+-- many studies have proved that there are much better initial values.
+-- This needs some work.
+initNeuronWeights :: Int -> Seed -> ([Double], Seed)
+initNeuronWeights numWeights seed =
+    let (r, seed') = finiteRandoms numWeights seed
+        weights = map (\x -> x - 0.5 ) r
+    in (weights, seed')
+
+-- Use initNeuronWeights to generate initial weights for whole layer.
+initLayerWeights :: Int -> Int -> Seed -> ([[Double]], Seed)
+initLayerWeights 0 numWeights seed = ([], seed)
+initLayerWeights numNeurons numWeights seed = 
+    let (firstWeights, seed0) = initNeuronWeights numWeights seed
+        (rest, seed1) = initLayerWeights (numNeurons-1) numWeights seed0
+    in ( (firstWeights:rest), seed1 )
+
+-- Create a 3-layer neural network (input, 1 hidden, output layers).
+-- One of the most important functions in this code.
+-- The neural network doesnt store representation of the input layer,
+-- since it doesnt have any weights.
 createNN3 :: Seed -> Int -> Int -> Int -> NeuralNetwork
 createNN3 gen numInput numHidden numOutput = 
     let (hiddenWeights, gen') = initLayerWeights numHidden numInput gen
@@ -79,19 +101,24 @@ createNN3 gen numInput numHidden numOutput =
         outputLayer = createSigmoidLayer outputWeights
     in [hiddenLayer, outputLayer]
 
+-- Run a multi-layer neural network and return its output.
 runNN :: NeuralNetwork -> [Double] -> [Double]
 runNN n i = runNNLayers i n
 
+-- Run each layer of this neural network and return the last as output.
 runNNLayers :: [Double] -> [NeuralLayer] -> [Double]
 runNNLayers = foldl runNNLayer
 
--- Calculate list of output per layer
-layersOutput :: [Double] -> [NeuralLayer] -> [[Double]]
-layersOutput input n = foldl (\outputs l -> ((runNNLayer (head outputs) l):outputs)) [input] n
-
+-- Run layer and return output.
 runNNLayer :: [Double] -> NeuralLayer -> [Double]
 runNNLayer = zipWith activate . repeat
 
+-- Calculate list of output per layer (output matrix).
+layersOutput :: [Double] -> [NeuralLayer] -> [[Double]]
+layersOutput input n = foldl (\outputs l -> ((runNNLayer (head outputs) l):outputs)) [input] n
+
+-- Update weights of a neuron given learning rate, delta and input.
+-- The formula is Wij = Wij + l * aj * Di.
 updateWeights :: Double -> Neuron -> Double -> [Double] -> Neuron
 updateWeights learning_rate n delta inputs = 
     let func = function n
@@ -161,16 +188,16 @@ percentError target output = let
     in 100 * ( (norm e) / (norm target) )
 
 squareError :: [Double] -> [Double] -> Double
-squareError target output = (** 2) $ norm $ zipWith (-) target output
+squareError = ( ( (** 2) . norm ) . ) . zipWith (-)
 
 rmse :: [[Double]] -> [[Double]] -> Double
-rmse targets outputs = sqrt $ average $ zipWith squareError targets outputs
+rmse = ( ( sqrt . average ) . ) . zipWith squareError
 
+trainCos :: IO NeuralNetwork
 trainCos = do
     gen <- getStdGen
     let n = createNN3 gen 1 10 1
-    trainedN <- trainCosLoop n 10000 0 1
-    return trainedN
+    trainCosLoop n 10000 0 1
 
 trainCosLoop :: NeuralNetwork -> Int -> Int -> Double -> IO NeuralNetwork
 trainCosLoop n times timesTrained lastRmse = do
@@ -187,20 +214,17 @@ trainCosLoop n times timesTrained lastRmse = do
             trainCosLoop n' times (timesTrained + 1) e
 
 validateCosLoop :: Seed -> NeuralNetwork -> Int -> [[Double]] -> [[Double]] -> Double
-validateCosLoop gen n 0 outputs targets = 
-    rmse targets outputs
-    
-validateCosLoop gen n times outputs targets =
-    let (r,gen') = random gen
-        input = r * pi / 2
-        target = [cos input]
-        output = runNN n [input]
-        targets' = (target:targets)
-        outputs' = (output:outputs)
-    in validateCosLoop gen' n (times-1) outputs' targets'
+validateCosLoop gen n 0 outputs targets = rmse targets outputs
+validateCosLoop gen n times outputs targets = let 
+    (r,gen') = random gen
+    input = r * pi / 2
+    target = [cos input]
+    output = runNN n [input]
+    in validateCosLoop gen' n (times-1) (output:outputs) (target:targets)
 
+guessGame :: IO ()
 guessGame = do 
-    hSetBuffering stdin LineBuffering
+    hSetBuffering stdin LineBuffering -- fix backspace/delete in ghci
     gen <- getStdGen
     let n = createNN3 gen 2 10 1
     guessGameLoop n
