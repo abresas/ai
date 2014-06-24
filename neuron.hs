@@ -127,21 +127,31 @@ updateWeights learning_rate n delta inputs =
         updatedWeights = zipWith (\weight input -> weight + learning_rate * input * delta) w inputs
     in Neuron updatedWeights func der
 
+-- Update weights of layer given learning rate, list of neurons, list of deltas, list of input to neuron.
 updateWeightsLayer :: Double -> NeuralLayer -> [Double] -> [[Double]] -> NeuralLayer
 updateWeightsLayer = zipWith3 . updateWeights
 
+-- Update weights on neural network after back propagation.
+-- Parameters: learning rate, neural network, matrix of deltas (per neuron), matrix of input to neuron
 updateWeightsNN :: Double -> NeuralNetwork -> [[Double]] -> [[[Double]]] -> NeuralNetwork
 updateWeightsNN = zipWith3 . updateWeightsLayer
 
+-- Sum the inner product of two lists
 sumProduct :: [Double] -> [Double] -> Double
 sumProduct = (sum .) . zipWith (*)
 
+-- Generic matrix transpose. Taken from http://stackoverflow.com/questions/2578930/understanding-this-matrix-transposition-function-in-haskell
+-- Useful to transpose layer of neurons
+--transpose :: [[a]] -> [[a]]
+--transpose ([]:_) = []
+--transpose x = (map head x) : transpose (map tail x)
+
 weightSigmaLayer :: [Double] -> NeuralLayer -> [Double]
 weightSigmaLayer delta layer = let
-    -- clean this up, transpose?
-    numWeights = length (weights (layer !! 0))
-    w = map (\(l,i) -> map (\n -> (weights n) !! i) l) $ zip (replicate numWeights layer) [0..]
-    in zipWith sumProduct w (replicate numWeights delta)
+    -- using tranpose we get weights grouped by source node
+    -- instead of weights grouped by destination node (as usual)
+    w = transpose $ map (\n -> (weights n)) layer
+    in zipWith sumProduct w (repeat delta)
 
 layerDelta :: NeuralLayer -> [[Double]] -> [Double] -> [Double]
 layerDelta = zipWith3 backwardActivate
