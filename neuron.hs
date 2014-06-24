@@ -5,6 +5,58 @@ import Control.Monad
 import Control.Concurrent
 import Debug.Trace
 
+--------------------------- MATH --------------------------------
+
+-- Calculate average (or mean) of list of reals.
+-- = ( 1 / n ) * sum
+mean :: Floating a => [a] -> a
+mean xs = (sum xs) / genericLength xs
+
+-- Normalize vector
+norm :: Floating a => [a] -> a
+norm = sqrt . sum . map (** 2)
+
+-- Sum the inner product of two lists
+sumProduct :: Num a => [a] -> [a] -> a
+sumProduct = (sum .) . zipWith (*)
+
+------------------------ STATISTICS -----------------------------
+
+-- Calculate error of prediction vector as percentage
+percentError :: Floating a => [a] -> [a] -> a
+percentError target output = let
+    e = zipWith (-) target output
+    in 100 * ( (norm e) / (norm target) )
+
+-- Calculate mean square error of a list of targets and list of predictions
+-- The result has a magnitude of the inputs squared, so for a result of same magnitude as inputs, call rmse
+mse :: Floating a => [a] -> [a] -> a
+mse = (mean .) . zipWith ( ( (** 2) . ) . (-) )
+
+-- Calculate root mean square error of a list of targets and list of predictions
+-- Targets and predictions must be of type double
+rmse :: Floating a => [a] -> [a] -> a
+rmse = (sqrt .) . mse
+
+-- Calculate root mean square error of normalized targets and normalized predictions
+-- This is like RMSE but first normalizes targets and predictions
+normRMSE :: Floating a => [[a]] -> [[a]] -> a
+normRMSE t p = rmse (map norm t) (map norm p)
+
+--------------------------- RANDOM -----------------------------
+
+type Seed = StdGen
+
+-- Generate a list of finite randoms.
+finiteRandoms :: (Random a) => Int -> Seed -> ([a], Seed)  
+finiteRandoms 0 gen = ([], gen)  
+finiteRandoms n gen =   
+    let (value, newGen) = random gen  
+        (restOfList, finalGen) = finiteRandoms (n-1) newGen  
+    in (value:restOfList, finalGen) 
+
+------------------------- NEURAL NETWORK ------------------------------
+
 data Neuron = Neuron {
     weights :: [Double],
     function :: Double -> Double,
@@ -16,8 +68,6 @@ instance Show Neuron where
 
 type NeuralLayer = [Neuron]
 type NeuralNetwork = [NeuralLayer]
-
-type Seed = StdGen
 
 -- Feed-forward activate neuron with given input.
 activate :: [Double] -> Neuron -> Double
@@ -61,14 +111,6 @@ createSigmoidLayer = map createSigmoidNeuron
 -- May be useful as output layer.
 createLinearLayer :: [[Double]] -> NeuralLayer
 createLinearLayer = map createLinearNeuron
-
--- Generate a list of finite randoms.
-finiteRandoms :: (Random a) => Int -> Seed -> ([a], Seed)  
-finiteRandoms 0 gen = ([], gen)  
-finiteRandoms n gen =   
-    let (value, newGen) = random gen  
-        (restOfList, finalGen) = finiteRandoms (n-1) newGen  
-    in (value:restOfList, finalGen) 
 
 -- Return a specific number of initial weights
 -- The weights are adjusted to be a random number between -0.5 and 0.5
@@ -117,6 +159,8 @@ runNNLayer = zipWith activate . repeat
 layersOutput :: [Double] -> [NeuralLayer] -> [[Double]]
 layersOutput input n = foldl (\outputs l -> ((runNNLayer (head outputs) l):outputs)) [input] n
 
+------------------------ NN LEARNING --------------------------------
+
 -- Update weights of a neuron given learning rate, delta and input.
 -- The formula is Wij = Wij + l * aj * Di.
 updateWeights :: Double -> Neuron -> Double -> [Double] -> Neuron
@@ -136,10 +180,11 @@ updateWeightsLayer = zipWith3 . updateWeights
 updateWeightsNN :: Double -> NeuralNetwork -> [[Double]] -> [[[Double]]] -> NeuralNetwork
 updateWeightsNN = zipWith3 . updateWeightsLayer
 
--- Sum the inner product of two lists
-sumProduct :: [Double] -> [Double] -> Double
-sumProduct = (sum .) . zipWith (*)
-
+-- Calculates weighted deltas for a layer.
+-- Equal to for each neuron j: Σi Wij Dj
+-- Wij weights from i to j
+-- Dj delta of neuron j
+-- Σi sum for each connected neuron i
 weightSigmaLayer :: [Double] -> NeuralLayer -> [Double]
 weightSigmaLayer delta layer = let
     -- using tranpose we get weights grouped by source node
@@ -147,12 +192,15 @@ weightSigmaLayer delta layer = let
     w = transpose $ map (\n -> (weights n)) layer
     in zipWith sumProduct w (repeat delta)
 
+-- Calculate delta for each neuron in layer.
 layerDelta :: NeuralLayer -> [[Double]] -> [Double] -> [Double]
 layerDelta = zipWith3 backwardActivate
 
+-- Transform matrix of outputs to matrix of inputs.
 outputsToInputs :: [[Double]] -> [[[Double]]]
 outputsToInputs = init . (map repeat)
 
+-- Calculate delta for each neuron in each layer of neural network.
 layersDelta :: [[[Double]]] -> NeuralLayer -> [[Double]] -> [NeuralLayer] -> [[Double]]
 layersDelta inputMatrix prevLayer acc [] = acc
 layersDelta inputMatrix prevLayer acc layers = let
@@ -198,23 +246,9 @@ backProp n input target learning_rate = let
     -- Use deltas to update weights
     in updateWeightsNN learning_rate n deltas inputs 
 
-average :: (Real a, Fractional b) => [a] -> b
-average xs = realToFrac (sum xs) / genericLength xs
+--------------------- NEURAL NETWORK APPLICATIONS ---------------------
 
-norm :: [Double] -> Double
-norm = sqrt . sum . map (** 2)
-
-percentError :: [Double] -> [Double] -> Double
-percentError target output = let
-    e = zipWith (-) target output
-    in 100 * ( (norm e) / (norm target) )
-
-squareError :: [Double] -> [Double] -> Double
-squareError = ( ( (** 2) . norm ) . ) . zipWith (-)
-
-rmse :: [[Double]] -> [[Double]] -> Double
-rmse = ( ( sqrt . average ) . ) . zipWith squareError
-
+-- Generate a neural network trained to calculate the cosine function
 trainCos :: IO NeuralNetwork
 trainCos = do
     gen <- getStdGen
@@ -236,7 +270,7 @@ trainCosLoop n times timesTrained lastRmse = do
             trainCosLoop n' times (timesTrained + 1) e
 
 validateCosLoop :: Seed -> NeuralNetwork -> Int -> [[Double]] -> [[Double]] -> Double
-validateCosLoop gen n 0 outputs targets = rmse targets outputs
+validateCosLoop gen n 0 outputs targets = normRMSE targets outputs
 validateCosLoop gen n times outputs targets = let 
     (r,gen') = random gen
     input = r * pi / 2
@@ -244,6 +278,8 @@ validateCosLoop gen n times outputs targets = let
     output = runNN n [input]
     in validateCosLoop gen' n (times-1) (output:outputs) (target:targets)
 
+-- Start a game of guessing the function the user has in mind.
+-- The function must have 2 inputs and 1 output.
 guessGame :: IO ()
 guessGame = do 
     hSetBuffering stdin LineBuffering -- fix backspace/delete in ghci
