@@ -201,14 +201,14 @@ outputsToInputs :: [[Double]] -> [[[Double]]]
 outputsToInputs = init . (map repeat)
 
 -- Calculate delta for each neuron in each layer of neural network.
-layersDelta :: [[[Double]]] -> NeuralLayer -> [[Double]] -> [NeuralLayer] -> [[Double]]
-layersDelta inputMatrix prevLayer acc [] = acc
-layersDelta inputMatrix prevLayer acc layers = let
+layersDelta :: [[[Double]]] -> [Double] -> [[Double]] -> [NeuralLayer] -> [[Double]]
+layersDelta inputMatrix prevError acc [] = acc
+layersDelta inputMatrix prevError acc layers = let
     (l:layers') = layers
     (input:inputMatrix') = inputMatrix
-    prevDelta = head acc
-    delta = zipWith3 backwardActivate l input (weightSigmaLayer prevDelta prevLayer)
-    in layersDelta inputMatrix' l (delta:acc) layers'
+    delta = zipWith3 backwardActivate l input prevError
+    layerError = weightSigmaLayer delta l
+    in layersDelta inputMatrix' layerError (delta:acc) layers'
 
 -- Backpropagate multi-layer network using a single training sample (input,target) 
 -- learning_rate is the speed of learning, typically in the range [0..1], usually 0.1.
@@ -234,15 +234,10 @@ backProp n input target learning_rate = let
     inputs = outputsToInputs $ reverse outputs
     -- Last output is the result
     result = head outputs
-    -- Last layer is output layer
-    outputLayer = last n
     -- Calculate error of output layer
     outputError = zipWith (-) target result
-    -- Calculate delta of output layer
-    delta = zipWith3 backwardActivate outputLayer (last inputs) outputError
-    -- Calculate delta for rest of layers
-    hiddenLayers = init n
-    deltas = layersDelta (reverse inputs) outputLayer [delta] hiddenLayers
+    -- Calculate delta for each layer
+    deltas = layersDelta (reverse inputs) outputError [] (reverse n)
     -- Use deltas to update weights
     in updateWeightsNN learning_rate n deltas inputs 
 
