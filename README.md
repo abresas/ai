@@ -25,7 +25,7 @@ Create a 3-layer neural network n, having 1 input, 10 hidden, and 1 output nodes
     >>> gen <- newStdGen
     >>> let (n,gen') = createNN3 gen 1 10 1
 
-*createNN3* like most functions in these examples, because they need randomnes, require a seed parameter and return a pair with the result and the next state of the seed.
+*createNN3* like most functions in these examples, because they need randomness, require a seed parameter and return a pair with the result and the next state of the seed.
 
 Run the neural network with *runNN*
 
