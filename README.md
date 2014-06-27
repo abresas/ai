@@ -64,6 +64,7 @@ which is much closer to the actual value of cos 1 = 0.54.
     [0.9846716920261342]
 
 *runNN1* can also be seen as a function that transforms neural network into a function accepting a double:
+
     >>> let mycos = runNN1 n'
     >>> :t mycos
     mycos :: Double -> Double
@@ -71,6 +72,7 @@ which is much closer to the actual value of cos 1 = 0.54.
     0.9846716920261342
 
 We can validate how well our neural network has learned the given function by calling *validateNN*:
+
     >>> let (e,_) = validateNN n' (\xs -> [ cos $ head xs ] ) 1000 gen''
     >>> e
     1.2427629031998429e-2
