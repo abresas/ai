@@ -39,7 +39,9 @@ Train the neural network to learn the cosine in [0..1]:
 The training function must have type [ Double ] -> [ Double ],
 so in the 2nd parameter we transform cos into accepting and returning a list.
 
-0.9 is the learning rate, and 1000 is the times to repeat the training.
+0.9 is the learning rate, and 1000 is the times to repeat the training. 
+
+The training function will be called with random numbers between 0 and 1.
 
 Now we can run the neural network again for varius inputs to see the output:
 
