@@ -63,7 +63,7 @@ which is much closer to the actual value of cos 1 = 0.54.
 *runNN1* takes a neural network that has 1 input and 1 output, and a double to be used as input.
 
     >>> runNN1 n' 0
-    [0.9846716920261342]
+    0.9846716920261342
 
 *runNN1* can also be seen as a function that transforms neural network into a function accepting a double:
 
