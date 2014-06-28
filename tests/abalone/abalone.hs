@@ -2,12 +2,11 @@ import AI
 import Text.CSV
 import Data.List
 import System.Random
-import Debug.Trace
 
 dataRowToTestData :: Record -> ([Double],[Double])
 dataRowToTestData row =
     case elemIndex (row !! 0) ["M","F","I"] of
-        Nothing -> trace ( "Bad dataset row " ++ (show row) ) $ ([],[])
+        Nothing -> ([],[])
         Just i -> let
             sex = (fromIntegral i) / 3
             len = read (row !! 1)
@@ -28,7 +27,7 @@ percentCorrect targets predictions = let
 trainNNDataset :: Double -> NeuralNetwork -> [([Double],[Double])] -> [([Double],[Double])] -> NeuralNetwork
 trainNNDataset l n [] testDS = n
 trainNNDataset l n ((dataIn,dataOut):restData) testDS = 
-    trace (show ((validateNNDataset n testDS),(length restData))) $ trainNNDataset l (backProp n dataIn dataOut l) restData testDS
+    trainNNDataset l (backProp n dataIn dataOut l) restData testDS
 
 validateNNDataset :: NeuralNetwork -> [([Double],[Double])] -> Double
 validateNNDataset n ds = let
