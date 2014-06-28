@@ -9,16 +9,18 @@
 -}
 module AI ( 
     -- * Types
-    Neuron, NeuralLayer, NeuralNetwork, 
+    Neuron, weights, function, derivative, NeuralLayer, NeuralNetwork, 
     -- * Neural network
     createNN3, runNN, runNN1, runNN2,
-    getInputSize, getOutputSize,
+    getNumLayers, getInputSize, getOutputSize,
     -- ** Layer
     createSigmoidLayer, createLinearLayer, initLayerWeights,
     -- ** Neuron
     createSigmoidNeuron, createLinearNeuron, initNeuronWeights, activate,
     -- * Training
-    backProp, trainNN, validateNN, testTrainNN
+    backProp, trainNN, validateNN, testTrainNN,
+    -- * For testing
+    sigmoid, normRMSE
     ) where
 
 import System.Random
@@ -181,6 +183,10 @@ createNN3 gen numInput numHidden numOutput =
         hiddenLayer = createSigmoidLayer hiddenWeights
         outputLayer = createSigmoidLayer outputWeights
     in ([hiddenLayer, outputLayer],gen'')
+
+-- | Return number of layers
+getNumLayers :: NeuralNetwork -> Int
+getNumLayers = (+ 1) . length
 
 -- | Return size of input layer.
 getInputSize :: NeuralNetwork -> Int
