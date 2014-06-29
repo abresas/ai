@@ -18,7 +18,7 @@ module AI (
     -- ** Neuron
     createSigmoidNeuron, createLinearNeuron, initNeuronWeights, activate,
     -- * Training
-    backProp, trainNN, validateNN, testTrainNN,
+    backProp, trainNN, validateNN, testTrainNN, trainNNDataset, runNNDataset,
     -- * For testing
     sigmoid, normRMSE
     ) where
@@ -343,3 +343,18 @@ testTrainNN :: NeuralNetwork -> ([Double] -> [Double]) -> Double -> Int -> Seed 
 testTrainNN nn func learningRate times gen = let
     (nn',gen') = trainNN nn func learningRate times gen
     in validateNN nn' func 1000 gen'
+
+-- |Train neural network in a dataset of (input,target).
+--
+-- Parameters: learning_rate, neural network, dataset
+trainNNDataset :: Double -> NeuralNetwork -> [([Double],[Double])] -> NeuralNetwork
+trainNNDataset l n [] = n
+trainNNDataset l n ((dataIn,dataOut):restData) = trainNNDataset l (backProp n dataIn dataOut l) restData
+
+-- |Run neural network in a dataset and get list of targets and list of predictions.
+--
+-- Typically you will want to call this function after calling trainNNDataset.
+--
+-- Parameters: neural network, dataset
+runNNDataset :: NeuralNetwork -> [([Double],[Double])] -> ([[Double]],[[Double]])
+runNNDataset n ds = foldl (\(t,p) (dataIn,dataOut) -> (dataOut:t,(runNN n dataIn):p)) ([],[]) ds

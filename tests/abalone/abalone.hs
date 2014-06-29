@@ -2,6 +2,7 @@ import AI
 import Text.CSV
 import Data.List
 import System.Random
+import Text.Printf
 
 dataRowToTestData :: Record -> ([Double],[Double])
 dataRowToTestData row =
@@ -24,14 +25,9 @@ percentCorrect targets predictions = let
     numCorrect = length $ filter ( \(target,prediction) -> (round (30 * (head target))) == (round (30 * (head prediction))) ) $ zip targets predictions
     in (fromIntegral (100 * numCorrect)) / (genericLength targets)
 
-trainNNDataset :: Double -> NeuralNetwork -> [([Double],[Double])] -> [([Double],[Double])] -> NeuralNetwork
-trainNNDataset l n [] testDS = n
-trainNNDataset l n ((dataIn,dataOut):restData) testDS = 
-    trainNNDataset l (backProp n dataIn dataOut l) restData testDS
-
 validateNNDataset :: NeuralNetwork -> [([Double],[Double])] -> Double
 validateNNDataset n ds = let
-    (targets,predictions) = foldl (\(t,p) (dataIn,dataOut) -> (dataOut:t,(runNN n dataIn):p)) ([],[]) ds
+    (targets,predictions) = runNNDataset n ds
     in percentCorrect targets predictions
 
 main = do
@@ -43,8 +39,7 @@ main = do
             let dataSet = map dataRowToTestData (init csv)
             -- use 3133 rows for training and the rest for testing the performance
             let (trainDS,testDS) = splitAt 3133 dataSet
-            gen <- newStdGen
-            let (n,gen') = createNN3 gen 8 20 1
-            let n' = trainNNDataset 0.1 n trainDS testDS
+            let (n,gen') = createNN3 (mkStdGen 1) 8 22 1
+            let n' = trainNNDataset 0.14 n trainDS
             -- Output the percentage of correctly classified abalones
-            putStrLn $ show $ validateNNDataset n' testDS
+            putStrLn $ printf "%.2f%%" $ validateNNDataset n' testDS
