@@ -122,7 +122,9 @@ backwardActivate n i weightedDelta =
 
 -- |Logistic function :: R -> [0..1]
 sigmoid :: Double -> Double
-sigmoid x = (exp x)/(1 + exp x)
+sigmoid x
+    | x >= 700 = error "Too large input to neuron. Try scaling down the neural network input."
+    | otherwise = (exp x)/(1 + exp x)
 
 -- |Derivative of logistic function.
 sigmoidDerivative :: Double -> Double
